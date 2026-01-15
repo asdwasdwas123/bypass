@@ -1,0 +1,10 @@
+{
+  "ghost_mode": true,
+  "port": 53761,
+  "secret_hash": "bcrypt_hash_aqui",
+  "requires_notepad": true,
+  "auto_clean": true,
+  "hide_process": true,
+  "max_connections": 1,
+  "timeout": 5000
+}

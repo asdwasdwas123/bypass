@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Inject - Celular</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #00ff88;
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #00ff88;
+            border-radius: 10px;
+            background: rgba(0, 255, 136, 0.05);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ff88;
+        }
+        
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+        }
+        
+        .online {
+            color: #00ff88;
+            border-color: #00ff88;
+        }
+        
+        .offline {
+            color: #ff5555;
+            border-color: #ff5555;
+        }
+        
+        .waiting {
+            color: #ffff55;
+            border-color: #ffff55;
+        }
+        
+        .config-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #00ff88;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+        
+        .btn-ghost {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #00ff88 0%, #008844 100%);
+            color: black;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 20px 0;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .btn-ghost:hover {
+            background: linear-gradient(135deg, #00ffaa 0%, #00aa55 100%);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+        }
+        
+        .btn-ghost:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .log {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 15px;
+            }
+            
+            h1 {
+                font-size: 20px;
+            }
+            
+            .btn-ghost {
+                padding: 12px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>👻 GHOST INJECT</h1>
+        
+        <div class="status waiting" id="status">
+            🔍 Procurando servidor...
+        </div>
+        
+        <div class="config-group">
+            <label>IP do PC:</label>
+            <input type="text" id="pcIp" value="192.168." placeholder="IP do PC na rede">
+        </div>
+        
+        <div class="config-group">
+            <label>Modo:</label>
+            <select id="mode">
+                <option value="ghost">👻 Ghost Mode (Invisível)</option>
+                <option value="stealth">🎭 Stealth (Rápido)</option>
+            </select>
+        </div>
+        
+        <button class="btn-ghost" id="injectBtn" onclick="ghostInject()" disabled>
+            ⚡ INICIAR GHOST INJECT
+        </button>
+        
+        <div class="result" id="result" style="display:none;"></div>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        // Configurações Fantasma
+        const GHOST_PORT = 53761;
+        const SECRET_HASH = 'bcrypt_hash_aqui'; // MESMO DO SERVER
+        let pcIp = '192.168.';
+        let ghostMode = true;
+        let isReady = false;
+
+        // Elementos
+        const statusEl = document.getElementById('status');
+        const injectBtn = document.getElementById('injectBtn');
+        const resultEl = document.getElementById('result');
+        const logEl = document.getElementById('log');
+        const pcIpInput = document.getElementById('pcIp');
+        const modeSelect = document.getElementById('mode');
+
+        // Atualizar configurações
+        pcIpInput.addEventListener('input', () => {
+            pcIp = pcIpInput.value.trim();
+            checkServer();
+        });
+        
+        modeSelect.addEventListener('change', () => {
+            ghostMode = modeSelect.value === 'ghost';
+        });
+
+        // Verificar servidor
+        async function checkServer() {
+            if (!pcIp || pcIp.length < 10) {
+                updateStatus('waiting', '⏳ Digite o IP do PC');
+                injectBtn.disabled = true;
+                return;
+            }
+
+            try {
+                // Teste de conexão UDP (rápido e silencioso)
+                const socket = new WebSocket(`ws://${pcIp}:${GHOST_PORT}`);
+                
+                socket.onopen = () => {
+                    updateStatus('online', '✅ Servidor Fantasma Online');
+                    injectBtn.disabled = false;
+                    isReady = true;
+                    socket.close();
+                };
+                
+                socket.onerror = () => {
+                    // Tenta método alternativo
+                    testUDPConnection();
+                };
+                
+                setTimeout(() => {
+                    if (!isReady) {
+                        testUDPConnection();
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                testUDPConnection();
+            }
+        }
+
+        // Teste UDP
+        function testUDPConnection() {
+            const testData = `PING:${SECRET_HASH}:${Date.now()}`;
+            
+            fetch(`http://${pcIp}:${GHOST_PORT}`, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: testData
+            }).then(() => {
+                updateStatus('online', '✅ Servidor Detectado');
+                injectBtn.disabled = false;
+                isReady = true;
+            }).catch(() => {
+                updateStatus('offline', '❌ Servidor Offline');
+                injectBtn.disabled = true;
+                isReady = false;
+            });
+        }
+
+        function updateStatus(type, message) {
+            statusEl.className = `status ${type}`;
+            statusEl.innerHTML = message;
+        }
+
+        // Ghost Inject
+        async function ghostInject() {
+            if (!isReady) {
+                showResult('❌ Servidor não disponível');
+                return;
+            }
+
+            injectBtn.disabled = true;
+            injectBtn.innerHTML = '👻 EXECUTANDO...';
+            
+            // Atualiza log
+            logEl.innerHTML = `[${new Date().toLocaleTimeString()}] Iniciando Ghost Mode...`;
+
+            try {
+                // Envia comando via UDP (invisível)
+                const command = `INJECT:${SECRET_HASH}:${Date.now()}:GHOST`;
+                
+                // Método 1: WebSocket
+                try {
+                    const ws = new WebSocket(`ws://${pcIp}:${GHOST_PORT}`);
+                    
+                    ws.onopen = () => {
+                        ws.send(command);
+                        logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Comando enviado`;
+                    };
+                    
+                    ws.onmessage = (event) => {
+                        showResult(`✅ Ghost Inject Executado<br>${event.data}`);
+                        logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Sucesso!`;
+                        ws.close();
+                    };
+                    
+                    ws.onerror = () => {
+                        // Fallback para método 2
+                        fallbackInject();
+                    };
+                    
+                    // Timeout
+                    setTimeout(() => {
+                        if (ws.readyState !== WebSocket.CLOSED) {
+                            ws.close();
+                            fallbackInject();
+                        }
+                    }, 3000);
+                    
+                } catch (wsError) {
+                    fallbackInject();
+                }
+                
+            } catch (error) {
+                showResult(`❌ Erro: ${error.message}`);
+                logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Erro: ${error.message}`;
+            } finally {
+                setTimeout(() => {
+                    injectBtn.disabled = false;
+                    injectBtn.innerHTML = '⚡ INICIAR GHOST INJECT';
+                }, 3000);
+            }
+        }
+
+        // Método alternativo (fallback)
+        function fallbackInject() {
+            logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Usando método alternativo...`;
+            
+            // Usa HTTP simples como fallback
+            fetch(`http://${pcIp}:${GHOST_PORT}/ghost`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hash: SECRET_HASH,
+                    timestamp: Date.now(),
+                    mode: 'ghost'
+                })
+            })
+            .then(response => {
+                if (response.ok) {
+                    showResult('✅ Inject via fallback executado');
+                    logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Fallback OK`;
+                } else {
+                    throw new Error('Fallback failed');
+                }
+            })
+            .catch(() => {
+                showResult('⚠️ Inject pode ter sido executado silenciosamente');
+                logEl.innerHTML += `<br>[${new Date().toLocaleTimeString()}] Execução silenciosa`;
+            });
+        }
+
+        function showResult(message) {
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = message;
+            
+            // Auto ocultar
+            setTimeout(() => {
+                resultEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Inicialização
+        setTimeout(checkServer, 1000);
+        setInterval(checkServer, 5000); // Verifica a cada 5s
+    </script>
+</body>
+</html>
