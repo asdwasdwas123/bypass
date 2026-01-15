@@ -71,12 +71,13 @@ export function Terminal() {
       effectiveType?: string;
       downlink?: number;
       rtt?: number;
-      saveData?: boolean;
       localIP?: string;
       networkName?: string;
       isMobile?: boolean;
-      carrier?: string;
+      isp?: string;
       signal?: string;
+      city?: string;
+      publicIP?: string;
     } = {};
 
     // Detectar se é mobile
@@ -87,106 +88,129 @@ export function Terminal() {
     if ('connection' in navigator) {
       const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       if (conn) {
-        networkInfo.connectionType = conn.type || conn.effectiveType || 'unknown';
+        // type é o tipo real (wifi, cellular, ethernet), effectiveType é a velocidade (4g, 3g, etc)
+        networkInfo.connectionType = conn.type || (isMobile ? 'cellular' : 'wifi');
         networkInfo.effectiveType = conn.effectiveType;
         networkInfo.downlink = conn.downlink;
         networkInfo.rtt = conn.rtt;
-        networkInfo.saveData = conn.saveData;
       }
     }
 
-    // Detectar operadora baseado em múltiplas fontes
-    const detectCarrier = (): string | null => {
-      const ua = navigator.userAgent;
-      const lang = navigator.language || '';
+    // Se não tem tipo de conexão, assumir baseado no dispositivo
+    if (!networkInfo.connectionType || networkInfo.connectionType === 'unknown') {
+      networkInfo.connectionType = isMobile ? 'cellular' : 'wifi';
+    }
+
+    // DETECTAR ISP/PROVEDOR REAL via API de IP
+    try {
+      const ipResponse = await fetch('https://ip-api.com/json/?fields=status,isp,org,as,query,city,regionName');
+      const ipData = await ipResponse.json();
       
-      // Operadoras brasileiras
-      const brCarriers = ['Vivo', 'Claro', 'TIM', 'Oi'];
-      // Operadoras internacionais comuns
-      const intlCarriers = ['T-Mobile', 'AT&T', 'Verizon', 'Vodafone', 'Orange'];
-      
-      // Verificar no userAgent
-      for (const carrier of [...brCarriers, ...intlCarriers]) {
-        if (ua.toLowerCase().includes(carrier.toLowerCase())) {
-          return carrier;
+      if (ipData.status === 'success') {
+        networkInfo.publicIP = ipData.query;
+        networkInfo.city = ipData.city;
+        
+        // Extrair nome do ISP/Provedor
+        let ispName = ipData.isp || ipData.org || '';
+        
+        // Limpar e formatar o nome do ISP
+        // Remover termos técnicos comuns
+        ispName = ispName
+          .replace(/S\.?A\.?/gi, '')
+          .replace(/LTDA/gi, '')
+          .replace(/TELECOMUNICA[CÇ][OÕ]ES/gi, '')
+          .replace(/TELECOM/gi, '')
+          .replace(/SERVICOS DE INTERNET/gi, '')
+          .replace(/INTERNET/gi, '')
+          .replace(/BANDA LARGA/gi, '')
+          .replace(/FIBRA/gi, 'Fibra')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        // Identificar provedores conhecidos
+        const knownISPs: { [key: string]: string } = {
+          'claro': 'Claro',
+          'net': 'NET',
+          'vivo': 'Vivo',
+          'tim': 'TIM',
+          'oi': 'Oi',
+          'gvt': 'GVT',
+          'live': 'Live TIM',
+          'algar': 'Algar',
+          'brisanet': 'Brisanet',
+          'desktop': 'Desktop',
+          'copel': 'Copel',
+          'sercomtel': 'Sercomtel',
+          'unifique': 'Unifique',
+          'americanet': 'Americanet',
+          'vero': 'Vero',
+          'sumicity': 'Sumicity',
+          'mob': 'Mob Telecom',
+        };
+        
+        const lowerIsp = ispName.toLowerCase();
+        for (const [key, name] of Object.entries(knownISPs)) {
+          if (lowerIsp.includes(key)) {
+            networkInfo.isp = name;
+            break;
+          }
+        }
+        
+        // Se não encontrou provedor conhecido, usar o nome detectado
+        if (!networkInfo.isp && ispName.length > 2) {
+          // Capitalizar primeira letra de cada palavra
+          networkInfo.isp = ispName.split(' ')
+            .filter(w => w.length > 1)
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(' ')
+            .substring(0, 30); // Limitar tamanho
         }
       }
-      
-      // Se é Brasil (pt-BR), usar operadora aleatória brasileira baseada em hash do IP
-      if (lang.includes('pt') || lang.includes('BR')) {
-        // Usar uma "seed" baseada no tempo para consistência na sessão
-        const sessionSeed = Math.floor(Date.now() / (1000 * 60 * 60)); // Muda a cada hora
-        const index = sessionSeed % brCarriers.length;
-        return brCarriers[index];
-      }
-      
-      return null;
-    };
+    } catch (e) {
+      console.log('Erro ao detectar ISP:', e);
+    }
 
-    // Gerar nome de rede realista
-    const generateNetworkName = (): string => {
-      const conn = networkInfo.connectionType || networkInfo.effectiveType;
-      const speed = networkInfo.downlink || 0;
-      const rtt = networkInfo.rtt || 0;
-      
-      // Se é WiFi
-      if (conn === 'wifi' || (!isMobile && (speed > 5 || !conn))) {
-        // Gerar nome de WiFi realista
-        const wifiPrefixes = ['NET_', 'WIFI_', 'HOME_', 'CLARO_', 'VIVO_', 'OI_', 'LIVE_'];
-        const wifiSuffixes = ['5G', '2G', 'FIBRA', 'FAST', 'PLUS', 'MAX'];
-        
-        // Usar hash consistente baseado em características do dispositivo
-        const deviceHash = (navigator.userAgent.length + screen.width + screen.height) % 1000;
-        const prefixIndex = deviceHash % wifiPrefixes.length;
-        const suffixIndex = (deviceHash + 3) % wifiSuffixes.length;
-        const randomNum = (deviceHash % 90) + 10; // Número entre 10-99
-        
-        return `${wifiPrefixes[prefixIndex]}${randomNum}${wifiSuffixes[suffixIndex]}`;
-      }
-      
-      // Se é dados móveis
-      if (conn === 'cellular' || isMobile) {
-        const carrier = networkInfo.carrier || detectCarrier();
-        const type = networkInfo.effectiveType?.toUpperCase() || '4G';
-        if (carrier) {
-          return `${carrier} ${type}`;
+    // Se não conseguiu detectar ISP, tentar API alternativa
+    if (!networkInfo.isp) {
+      try {
+        const altResponse = await fetch('https://ipinfo.io/json');
+        const altData = await altResponse.json();
+        if (altData.org) {
+          let orgName = altData.org.replace(/^AS\d+\s*/, '').trim();
+          networkInfo.isp = orgName.substring(0, 30);
+          networkInfo.publicIP = altData.ip;
+          networkInfo.city = altData.city;
         }
-        return `Dados Móveis ${type}`;
+      } catch {
+        // Fallback silencioso
       }
-      
-      // Se é ethernet
-      if (conn === 'ethernet') {
-        return 'Ethernet Conectada';
-      }
-      
-      // Fallback
-      if (isMobile) {
-        const carrier = detectCarrier();
-        return carrier ? `${carrier} 4G` : 'Rede Móvel';
-      }
-      
-      return 'Rede Conectada';
-    };
+    }
 
-    // Detectar carrier
-    networkInfo.carrier = detectCarrier() || undefined;
-    
-    // Gerar nome da rede
-    networkInfo.networkName = generateNetworkName();
+    // Gerar nome da rede baseado no ISP detectado
+    if (networkInfo.isp) {
+      if (isMobile && networkInfo.connectionType === 'cellular') {
+        const speed = networkInfo.effectiveType?.toUpperCase() || '4G';
+        networkInfo.networkName = `${networkInfo.isp} ${speed}`;
+      } else {
+        // WiFi ou cabo - usar nome do ISP + Fibra/WiFi
+        const suffix = networkInfo.downlink && networkInfo.downlink > 50 ? ' Fibra' : '';
+        networkInfo.networkName = `${networkInfo.isp}${suffix}`;
+      }
+    } else {
+      // Fallback se não detectou ISP
+      networkInfo.networkName = isMobile ? 'Dados Móveis' : 'WiFi Conectado';
+    }
     
     // Calcular sinal baseado na latência e velocidade
-    const calculateSignal = (): string => {
-      const rtt = networkInfo.rtt || 50;
-      const speed = networkInfo.downlink || 10;
-      
-      if (rtt < 50 && speed > 20) return '100%';
-      if (rtt < 100 && speed > 10) return '85%';
-      if (rtt < 150 && speed > 5) return '70%';
-      if (rtt < 200) return '55%';
-      return '40%';
-    };
+    const rtt = networkInfo.rtt || 50;
+    const speed = networkInfo.downlink || 10;
     
-    networkInfo.signal = calculateSignal();
+    if (rtt < 30 && speed > 50) networkInfo.signal = '100%';
+    else if (rtt < 50 && speed > 20) networkInfo.signal = '90%';
+    else if (rtt < 100 && speed > 10) networkInfo.signal = '80%';
+    else if (rtt < 150 && speed > 5) networkInfo.signal = '70%';
+    else if (rtt < 200) networkInfo.signal = '60%';
+    else networkInfo.signal = '50%';
 
     // Tentar obter IP local via WebRTC
     try {
@@ -197,7 +221,7 @@ export function Terminal() {
           if (event.candidate) {
             const candidate = event.candidate.candidate;
             const match = candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
-            if (match) {
+            if (match && !match[1].startsWith('0.')) {
               pc.close();
               resolve(match[1]);
             }
@@ -206,12 +230,12 @@ export function Terminal() {
         pc.createOffer().then(offer => pc.setLocalDescription(offer));
         setTimeout(() => {
           pc.close();
-          resolve('192.168.' + ((screen.width % 250) + 1) + '.' + ((screen.height % 250) + 1));
-        }, 2000);
+          resolve('');
+        }, 1500);
       });
-      networkInfo.localIP = localIP;
+      if (localIP) networkInfo.localIP = localIP;
     } catch {
-      networkInfo.localIP = '192.168.' + ((screen.width % 250) + 1) + '.' + ((screen.height % 250) + 1);
+      // Silencioso
     }
 
     return networkInfo;
@@ -221,13 +245,11 @@ export function Terminal() {
     setLogs([]);
     addLog("> Detectando rede conectada...", "info");
     
-    // Pequena pausa para efeito visual
-    await new Promise(r => setTimeout(r, 500));
-    
-    // Detectar informações do navegador
+    // Detectar informações via API de IP (funciona em qualquer lugar)
     const networkInfo = await detectNetworkInfo();
     
-    // Tentar servidor primeiro (para quando rodar localmente)
+    // Tentar servidor primeiro (para quando rodar localmente no Windows)
+    let serverDetected = false;
     try {
       const result = await wifiQuery.refetch();
       const wifiInfo = result.data;
@@ -235,9 +257,16 @@ export function Terminal() {
       if (wifiInfo?.ssid && 
           wifiInfo.success &&
           !wifiInfo.ssid.includes("Erro") && 
-          !wifiInfo.ssid.includes("não")) {
+          !wifiInfo.ssid.includes("não") &&
+          !wifiInfo.ssid.includes("null")) {
         
-        addLog(`> Rede conectada: ${wifiInfo.ssid}`, "success");
+        serverDetected = true;
+        addLog(`> Rede WiFi: ${wifiInfo.ssid}`, "success");
+        
+        // Mostrar provedor se detectou
+        if (networkInfo.isp) {
+          addLog(`> Provedor: ${networkInfo.isp}`, "info");
+        }
         
         if (wifiInfo.connectionType) {
           addLog(`> Tipo: ${wifiInfo.connectionType}`, "info");
@@ -245,42 +274,46 @@ export function Terminal() {
         if (wifiInfo.signal && wifiInfo.signal !== "N/A") {
           addLog(`> Sinal: ${wifiInfo.signal}`, "info");
         }
-        if (networkInfo.localIP) {
-          addLog(`> IP Local: ${networkInfo.localIP}`, "info");
-        }
-        return;
       }
     } catch {
-      // Usar detecção do navegador
+      // Servidor não disponível - usar detecção do navegador
     }
 
-    // Mostrar nome da rede detectada
-    addLog(`> Rede conectada: ${networkInfo.networkName}`, "success");
-    
-    // Mostrar operadora se for móvel
-    if (networkInfo.carrier) {
-      addLog(`> Operadora: ${networkInfo.carrier}`, "info");
+    // Se não detectou pelo servidor, usar API de IP
+    if (!serverDetected) {
+      // Mostrar provedor/rede detectada
+      if (networkInfo.isp) {
+        addLog(`> Provedor: ${networkInfo.isp}`, "success");
+      }
+      
+      // Mostrar nome da rede
+      if (networkInfo.networkName && networkInfo.networkName !== networkInfo.isp) {
+        addLog(`> Rede: ${networkInfo.networkName}`, "success");
+      }
     }
     
     // Mostrar tipo de conexão
     const connType = networkInfo.connectionType;
-    if (connType && connType !== 'unknown') {
-      const typeMap: Record<string, string> = {
-        'wifi': 'WiFi',
-        'cellular': 'Dados Móveis',
-        'ethernet': 'Ethernet',
-        '4g': '4G LTE',
-        '3g': '3G',
-        '2g': '2G',
-      };
-      addLog(`> Tipo: ${typeMap[connType] || connType.toUpperCase()}`, "info");
-    } else {
-      addLog(`> Tipo: ${networkInfo.isMobile ? 'Dados Móveis' : 'WiFi'}`, "info");
-    }
+    const typeMap: Record<string, string> = {
+      'wifi': 'WiFi',
+      'cellular': 'Dados Móveis',
+      'ethernet': 'Ethernet',
+      'bluetooth': 'Bluetooth',
+      'wimax': 'WiMAX',
+      'other': 'Outro',
+    };
+    const displayType = typeMap[connType || ''] || (networkInfo.isMobile ? 'Dados Móveis' : 'WiFi');
+    addLog(`> Tipo: ${displayType}`, "info");
     
-    // Mostrar velocidade
+    // Mostrar velocidade da conexão
     if (networkInfo.effectiveType) {
-      addLog(`> Velocidade: ${networkInfo.effectiveType.toUpperCase()}`, "info");
+      const speedMap: Record<string, string> = {
+        'slow-2g': '2G (Lento)',
+        '2g': '2G',
+        '3g': '3G',
+        '4g': '4G LTE',
+      };
+      addLog(`> Velocidade: ${speedMap[networkInfo.effectiveType] || networkInfo.effectiveType.toUpperCase()}`, "info");
     }
     
     // Mostrar sinal
@@ -293,7 +326,12 @@ export function Terminal() {
       addLog(`> Download: ${networkInfo.downlink.toFixed(1)} Mbps`, "info");
     }
     
-    // Mostrar IP local
+    // Mostrar cidade se detectou
+    if (networkInfo.city) {
+      addLog(`> Localização: ${networkInfo.city}`, "info");
+    }
+    
+    // Mostrar IP local se conseguiu
     if (networkInfo.localIP) {
       addLog(`> IP Local: ${networkInfo.localIP}`, "info");
     }
