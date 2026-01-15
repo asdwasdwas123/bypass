@@ -32,6 +32,21 @@ export const systemRouter = router({
     }),
 
   getWifiInfo: publicProcedure.query(async () => {
+    // Verificar se estamos em ambiente Windows
+    const isWindows = process.platform === 'win32';
+    
+    // Se não estiver no Windows (ex: Vercel/Linux), retornar resposta indicando
+    if (!isWindows) {
+      return {
+        success: false,
+        ssid: null,
+        state: "Não disponível",
+        signal: "N/A",
+        error: "Detecção de rede via servidor não disponível neste ambiente. Use as informações do navegador.",
+        serverEnvironment: process.platform,
+      };
+    }
+
     try {
       // MÉTODO 1: PowerShell Get-NetConnectionProfile (mais confiável, funciona mesmo sem WiFi ativo)
       try {
