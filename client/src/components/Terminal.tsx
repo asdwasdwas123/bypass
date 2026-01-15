@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Monitor, Play, Terminal as TerminalIcon, Settings } from "lucide-react";
+import { Shield, Play, Terminal as TerminalIcon, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { executeDirectCommand, tryBrowserExploits } from "@/lib/executor";
 
 interface LogEntry {
   id: number;
@@ -52,24 +53,56 @@ export function Terminal() {
 
   const handleInject = async () => {
     if (isInjecting) return;
-    
-    // Validar IP
-    if (!pcIp || pcIp.length < 7) {
-      addLog("❌ Configure o IP do PC primeiro", "error");
-      setShowConfig(true);
-      return;
-    }
 
     setIsInjecting(true);
-    setLogs([]); // Limpar logs anteriores
+    setLogs([]);
 
     try {
+      addLog("> Iniciando injeção direta...", "info");
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Tentar execução direta (sem servidor)
+      addLog("> Tentando métodos de execução direta...", "info");
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const directResult = await executeDirectCommand();
+      
+      if (directResult.success) {
+        addLog(`✅ Executado via: ${directResult.method}`, "success");
+        addLog("> Comando enviado com sucesso!", "success");
+        addLog("> rundll32.exe \"C:\\vfcompat.dll\", windowssupport", "info");
+        setIsInjecting(false);
+        return;
+      }
+
+      // Se falhou, tentar exploits do navegador
+      addLog("> Método direto falhou, tentando exploits...", "warning");
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const exploitResult = await tryBrowserExploits();
+      
+      if (exploitResult.success) {
+        addLog(`✅ Executado via: ${exploitResult.method}`, "success");
+        addLog("> Exploit bem-sucedido!", "success");
+        setIsInjecting(false);
+        return;
+      }
+
+      // Se tudo falhou, tentar servidor local
+      addLog("> Tentando servidor local...", "info");
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Validar IP
+      if (!pcIp || pcIp.length < 7) {
+        addLog("❌ Configure o IP do PC primeiro", "error");
+        setShowConfig(true);
+        setIsInjecting(false);
+        return;
+      }
+
       addLog(`> Conectando ao PC: ${pcIp}`, "info");
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Verificar se servidor está online
-      addLog("> Verificando servidor...", "info");
-      
       const serverUrl = `http://${pcIp}:8888`;
       
       try {
@@ -86,14 +119,19 @@ export function Terminal() {
         await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (error) {
-        addLog("❌ Servidor não encontrado", "error");
-        addLog("> Verifique se o servidor está rodando no PC", "warning");
-        addLog("> Comando: npm run inject:stealth", "info");
+        addLog("❌ Nenhum método funcionou", "error");
+        addLog("", "info");
+        addLog("⚠️ NAVEGADORES MODERNOS BLOQUEIAM", "warning");
+        addLog("   execução direta de comandos!", "warning");
+        addLog("", "info");
+        addLog("💡 Soluções:", "info");
+        addLog("1. Execute START-AQUI.bat no PC", "info");
+        addLog("2. Ou instale a extensão do navegador", "info");
+        addLog("3. Ou use um navegador desatualizado", "info");
         setIsInjecting(false);
         return;
       }
 
-      // Enviar comando de injeção
       addLog("> Verificando Notepad...", "info");
       await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -286,88 +324,114 @@ export function Terminal() {
     return networkInfo;
   };
 
-  const handleDesktop = async () => {
+  const handleAuthorization = () => {
     setLogs([]);
-    addLog("> Detectando rede conectada...", "info");
     
-    const networkInfo = await detectNetworkInfo();
+    // Detectar se é mobile ou desktop
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isChrome = /Chrome|Chromium|Edg/i.test(navigator.userAgent);
+    const isSafari = /Safari/i.test(navigator.userAgent) && !/Chrome/i.test(navigator.userAgent);
     
-    let serverDetected = false;
-    try {
-      const result = await wifiQuery.refetch();
-      const wifiInfo = result.data;
+    if (isMobile) {
+      // Instruções para CELULAR
+      addLog("> Configurando autorização no CELULAR...", "info");
+      addLog("", "info");
+      addLog("📱 INSTRUÇÕES PARA CELULAR:", "success");
+      addLog("", "info");
       
-      if (wifiInfo?.ssid && 
-          wifiInfo.success &&
-          !wifiInfo.ssid.includes("Erro") && 
-          !wifiInfo.ssid.includes("não") &&
-          !wifiInfo.ssid.includes("null")) {
-        
-        serverDetected = true;
-        addLog(`> Rede WiFi: ${wifiInfo.ssid}`, "success");
-        
-        if (networkInfo.isp) {
-          addLog(`> Provedor: ${networkInfo.isp}`, "info");
-        }
-        
-        if (wifiInfo.connectionType) {
-          addLog(`> Tipo: ${wifiInfo.connectionType}`, "info");
-        }
-        if (wifiInfo.signal && wifiInfo.signal !== "N/A") {
-          addLog(`> Sinal: ${wifiInfo.signal}`, "info");
-        }
-      }
-    } catch {
-      // Servidor não disponível
-    }
-
-    if (!serverDetected) {
-      if (networkInfo.isp) {
-        addLog(`> Provedor: ${networkInfo.isp}`, "success");
+      if (isChrome) {
+        addLog("🌐 Chrome/Edge Mobile:", "warning");
+        addLog("", "info");
+        addLog("1️⃣ Toque nos 3 pontos (⋮) no canto", "info");
+        addLog("2️⃣ Configurações", "info");
+        addLog("3️⃣ Configurações do site", "info");
+        addLog("4️⃣ Acesso à rede local", "warning");
+        addLog("5️⃣ Mude para: PERMITIR", "success");
+      } else if (isSafari) {
+        addLog("🍎 Safari (iPhone):", "warning");
+        addLog("", "info");
+        addLog("1️⃣ Abra Ajustes do iPhone", "info");
+        addLog("2️⃣ Role até Safari", "info");
+        addLog("3️⃣ Avançado", "info");
+        addLog("4️⃣ Dados de Sites", "info");
+        addLog("5️⃣ Permita acesso à rede local", "success");
+        addLog("", "info");
+        addLog("OU:", "warning");
+        addLog("1️⃣ No Safari, toque em 'aA' na barra", "info");
+        addLog("2️⃣ Configurações do Site", "info");
+        addLog("3️⃣ Permitir acesso à rede local", "success");
+      } else {
+        addLog("1️⃣ Abra as Configurações do navegador", "info");
+        addLog("2️⃣ Privacidade e segurança", "info");
+        addLog("3️⃣ Acesso à rede local", "warning");
+        addLog("4️⃣ Mude para: PERMITIR", "success");
       }
       
-      if (networkInfo.networkName && networkInfo.networkName !== networkInfo.isp) {
-        addLog(`> Rede: ${networkInfo.networkName}`, "success");
+      addLog("", "info");
+      addLog("✅ Isso permite o celular acessar o PC", "success");
+      addLog("   na mesma rede WiFi!", "success");
+      
+    } else {
+      // Instruções para PC/DESKTOP
+      addLog("> Configurando autorização no PC...", "info");
+      addLog("", "info");
+      addLog("🖥️ INSTRUÇÕES PARA PC:", "success");
+      addLog("", "info");
+      
+      if (isChrome) {
+        addLog("🌐 Chrome/Edge:", "warning");
+        addLog("", "info");
+        addLog("1️⃣ Clique no ícone de cadeado 🔒", "info");
+        addLog("   (ao lado da URL)", "info");
+        addLog("", "info");
+        addLog("2️⃣ Configurações do site", "info");
+        addLog("", "info");
+        addLog("3️⃣ Procure: 'Acesso à rede local'", "warning");
+        addLog("", "info");
+        addLog("4️⃣ Mude para: PERMITIR", "success");
+        addLog("", "info");
+        addLog("OU:", "warning");
+        addLog("1️⃣ chrome://settings/content/all", "info");
+        addLog("2️⃣ Procure este site", "info");
+        addLog("3️⃣ Acesso à rede local → Permitir", "success");
+      } else {
+        addLog("1️⃣ Abra as Configurações do navegador", "info");
+        addLog("2️⃣ Privacidade e segurança", "info");
+        addLog("3️⃣ Configurações do site", "info");
+        addLog("4️⃣ Acesso à rede local", "warning");
+        addLog("5️⃣ Mude para: PERMITIR", "success");
       }
+      
+      addLog("", "info");
+      addLog("✅ Isso permite o navegador acessar", "success");
+      addLog("   dispositivos na rede local!", "success");
     }
     
-    const connType = networkInfo.connectionType;
-    const typeMap: Record<string, string> = {
-      'wifi': 'WiFi',
-      'cellular': 'Dados Móveis',
-      'ethernet': 'Ethernet',
-      'bluetooth': 'Bluetooth',
-      'wimax': 'WiMAX',
-      'other': 'Outro',
-    };
-    const displayType = typeMap[connType || ''] || (networkInfo.isMobile ? 'Dados Móveis' : 'WiFi');
-    addLog(`> Tipo: ${displayType}`, "info");
+    addLog("", "info");
+    addLog("🔄 Após ativar, volte e clique em Injetar", "info");
+    addLog("", "info");
+    addLog("⚠️ IMPORTANTE:", "warning");
+    addLog("   PC e celular devem estar na", "warning");
+    addLog("   MESMA rede WiFi!", "warning");
     
-    if (networkInfo.effectiveType) {
-      const speedMap: Record<string, string> = {
-        'slow-2g': '2G (Lento)',
-        '2g': '2G',
-        '3g': '3G',
-        '4g': '4G LTE',
-      };
-      addLog(`> Velocidade: ${speedMap[networkInfo.effectiveType] || networkInfo.effectiveType.toUpperCase()}`, "info");
-    }
-    
-    if (networkInfo.signal) {
-      addLog(`> Sinal: ${networkInfo.signal}`, "info");
-    }
-    
-    if (networkInfo.downlink && networkInfo.downlink > 0) {
-      addLog(`> Download: ${networkInfo.downlink.toFixed(1)} Mbps`, "info");
-    }
-    
-    if (networkInfo.city) {
-      addLog(`> Localização: ${networkInfo.city}`, "info");
-    }
-    
-    if (networkInfo.localIP) {
-      addLog(`> IP Local: ${networkInfo.localIP}`, "info");
-    }
+    // Tentar abrir configurações automaticamente
+    setTimeout(() => {
+      try {
+        if (isChrome && !isMobile) {
+          // Chrome Desktop - tentar abrir configurações
+          window.open('chrome://settings/content/all', '_blank');
+          addLog("", "info");
+          addLog("✅ Abrindo configurações...", "success");
+        } else if (isChrome && isMobile) {
+          // Chrome Mobile - não pode abrir chrome://
+          addLog("", "info");
+          addLog("💡 Siga as instruções acima", "info");
+        }
+      } catch (e) {
+        addLog("", "info");
+        addLog("💡 Siga as instruções acima", "info");
+      }
+    }, 500);
   };
 
   return (
@@ -448,10 +512,10 @@ export function Terminal() {
 
           <Button 
             variant="outline" 
-            onClick={handleDesktop}
-            className="w-full border-border/50 hover:bg-muted/50 hover:text-foreground transition-colors font-mono text-sm h-10"
+            onClick={handleAuthorization}
+            className="w-full border-yellow-500/50 hover:bg-yellow-500/10 hover:text-yellow-500 transition-colors font-mono text-sm h-10 border-2"
           >
-            <Monitor className="w-4 h-4 mr-2" /> Desktop
+            <Shield className="w-4 h-4 mr-2" /> Autorização
           </Button>
         </div>
 
