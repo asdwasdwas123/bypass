@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Conexão - Wraith Inject</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0a0a;
+            color: #00ff88;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            padding: 30px;
+            border: 2px solid #00ff88;
+            border-radius: 15px;
+            background: rgba(0, 255, 136, 0.05);
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            text-shadow: 0 0 10px #00ff88;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #00ff88;
+            font-family: 'Consolas', monospace;
+            font-size: 16px;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+        
+        button {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #00ff88 0%, #008844 100%);
+            color: black;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 0;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #00ffaa 0%, #00aa55 100%);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .success {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid #00ff88;
+            color: #00ff88;
+        }
+        
+        .error {
+            background: rgba(255, 85, 85, 0.1);
+            border: 1px solid #ff5555;
+            color: #ff5555;
+        }
+        
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 85, 0.05);
+            border: 1px solid #ffff55;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #ffff55;
+        }
+        
+        .step {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Teste de Conexão</h1>
+        
+        <div class="input-group">
+            <label>IP do PC:</label>
+            <input type="text" id="pcIp" value="192.168.1.3" placeholder="Digite o IP do PC">
+        </div>
+        
+        <button onclick="testConnection()">🔍 Testar Conexão</button>
+        <button onclick="testInject()" style="background: linear-gradient(135deg, #5588ff 0%, #2244aa 100%);">⚡ Testar Inject</button>
+        
+        <div id="result"></div>
+        
+        <div class="info">
+            <strong>📋 Checklist:</strong>
+            <div class="step">✓ Servidor rodando no PC</div>
+            <div class="step">✓ Firewall configurado</div>
+            <div class="step">✓ Mesma rede WiFi</div>
+            <div class="step">✓ IP correto</div>
+        </div>
+    </div>
+
+    <script>
+        const resultEl = document.getElementById('result');
+        const pcIpInput = document.getElementById('pcIp');
+
+        async function testConnection() {
+            const ip = pcIpInput.value.trim();
+            
+            if (!ip) {
+                showResult('❌ Digite o IP do PC', 'error');
+                return;
+            }
+
+            showResult('🔍 Testando conexão...', 'info');
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch(`http://${ip}:8888/status`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult(
+                        `✅ CONEXÃO FUNCIONANDO!\n\n` +
+                        `Status: ${data.status}\n` +
+                        `Servidor: ${data.server}\n` +
+                        `Versão: ${data.version}\n` +
+                        `Plataforma: ${data.platform}\n\n` +
+                        `🎯 O servidor está online e respondendo!\n` +
+                        `Agora você pode usar o botão Injetar.`,
+                        'success'
+                    );
+                } else {
+                    showResult(`❌ Servidor retornou erro: ${response.status}`, 'error');
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    showResult(
+                        `❌ TIMEOUT\n\n` +
+                        `O servidor não respondeu em 5 segundos.\n\n` +
+                        `Verifique:\n` +
+                        `• Servidor está rodando no PC?\n` +
+                        `• IP está correto? (${ip})\n` +
+                        `• Mesma rede WiFi?\n` +
+                        `• Firewall configurado?`,
+                        'error'
+                    );
+                } else {
+                    showResult(
+                        `❌ ERRO DE CONEXÃO\n\n` +
+                        `Não foi possível conectar ao servidor.\n\n` +
+                        `Verifique:\n` +
+                        `• Execute: start-inject-with-firewall.bat\n` +
+                        `• Confirme o IP: ${ip}\n` +
+                        `• Ambos na mesma rede WiFi\n` +
+                        `• Firewall do Windows configurado`,
+                        'error'
+                    );
+                }
+            }
+        }
+
+        async function testInject() {
+            const ip = pcIpInput.value.trim();
+            
+            if (!ip) {
+                showResult('❌ Digite o IP do PC', 'error');
+                return;
+            }
+
+            showResult('⚡ Testando injeção...', 'info');
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch(`http://${ip}:8888/inject`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showResult(
+                        `✅ INJEÇÃO EXECUTADA!\n\n` +
+                        `Mensagem: ${data.message}\n` +
+                        `Método: ${data.method}\n` +
+                        `Timestamp: ${data.timestamp}\n\n` +
+                        `🎯 Comando executado com sucesso!`,
+                        'success'
+                    );
+                } else if (data.requiresNotepad) {
+                    showResult(
+                        `⚠️ NOTEPAD NÃO ESTÁ ABERTO\n\n` +
+                        `${data.error}\n\n` +
+                        `📝 Abra o Bloco de Notas (Notepad) no PC\n` +
+                        `e tente novamente.`,
+                        'error'
+                    );
+                } else {
+                    showResult(
+                        `❌ ERRO\n\n` +
+                        `${data.error}\n\n` +
+                        `Timestamp: ${data.timestamp}`,
+                        'error'
+                    );
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    showResult(`❌ TIMEOUT - Servidor não respondeu`, 'error');
+                } else {
+                    showResult(`❌ ERRO: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        function showResult(message, type) {
+            resultEl.className = `result ${type}`;
+            resultEl.textContent = message;
+        }
+
+        // Auto-detectar IP salvo
+        const savedIp = localStorage.getItem('wraith_pc_ip');
+        if (savedIp) {
+            pcIpInput.value = savedIp;
+        }
+
+        // Salvar IP ao digitar
+        pcIpInput.addEventListener('change', () => {
+            localStorage.setItem('wraith_pc_ip', pcIpInput.value);
+        });
+    </script>
+</body>
+</html>
