@@ -1,8 +1,8 @@
-const express = require('express');
-const cors = require('cors');
-const { spawn } = require('child_process');
-const http = require('http');
-const WebSocket = require('ws');
+import express from 'express';
+import cors from 'cors';
+import { spawn } from 'child_process';
+import http from 'http';
+import { WebSocketServer } from 'ws';
 
 const app = express();
 const PORT = process.env.INJECT_PORT || 8888;
@@ -182,7 +182,7 @@ app.post('/inject', async (req, res) => {
 const server = http.createServer(app);
 
 // WebSocket Server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
     console.log('[WS] Cliente conectado');
@@ -252,4 +252,4 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('[ERROR] Promise rejeitada:', reason);
 });
 
-module.exports = { app, server };
+export { app, server };
