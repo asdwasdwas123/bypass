@@ -13,9 +13,8 @@
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "inject": "node server/inject-server.js",
-    "ghost": "node server/ghost-server.js",
-    "inject:dev": "nodemon server/inject-server.js",
-    "ghost:dev": "nodemon server/ghost-server.js"
+    "inject:stealth": "node server/inject-stealth.js",
+    "ghost": "node server/ghost-server.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

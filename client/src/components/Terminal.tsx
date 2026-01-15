@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Monitor, Play, Terminal as TerminalIcon } from "lucide-react";
+import { Monitor, Play, Terminal as TerminalIcon, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 interface LogEntry {
@@ -15,11 +16,15 @@ export function Terminal() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isInjecting, setIsInjecting] = useState(false);
   const [ipAddress, setIpAddress] = useState<string>("Carregando...");
+  const [pcIp, setPcIp] = useState<string>(() => {
+    return localStorage.getItem('wraith_pc_ip') || "192.168.";
+  });
+  const [showConfig, setShowConfig] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wifiQuery = trpc.system.getWifiInfo.useQuery(undefined, { enabled: false });
 
   useEffect(() => {
-    // Simular detecção de IP
+    // Detectar IP público
     fetch("https://api.ipify.org?format=json")
       .then((res) => res.json())
       .then((data) => setIpAddress(data.ip))
@@ -37,32 +42,109 @@ export function Terminal() {
   }, [logs]);
 
   const addLog = (text: string, type: LogEntry["type"] = "info") => {
-    setLogs((prev) => [...prev, { id: Date.now(), text, type }]);
+    setLogs((prev) => [...prev, { id: Date.now() + Math.random(), text, type }]);
+  };
+
+  const savePcIp = (ip: string) => {
+    setPcIp(ip);
+    localStorage.setItem('wraith_pc_ip', ip);
   };
 
   const handleInject = async () => {
     if (isInjecting) return;
+    
+    // Validar IP
+    if (!pcIp || pcIp.length < 7) {
+      addLog("❌ Configure o IP do PC primeiro", "error");
+      setShowConfig(true);
+      return;
+    }
+
     setIsInjecting(true);
     setLogs([]); // Limpar logs anteriores
 
-    const steps = [
-      { text: `> IP detectado: ${ipAddress}`, delay: 500, type: "info" },
-      { text: "> Bypass detectado: Wraith System", delay: 1200, type: "success" },
-      { text: "> Iniciando processo de injeção...", delay: 2000, type: "warning" },
-      { text: "> Conectando ao servidor seguro...", delay: 3500, type: "info" },
-      { text: "> Bypass: ATIVO", delay: 5000, type: "success" },
-      { text: "> Injetando módulos de memória...", delay: 6500, type: "info" },
-      { text: "> Verificando integridade...", delay: 8000, type: "info" },
-      { text: "> Injeção concluída com sucesso@@@@@!", delay: 9500, type: "success" },
-      { text: "> Pronto para uso. Bom jogo!", delay: 10500, type: "success" },
-    ];
+    try {
+      addLog(`> Conectando ao PC: ${pcIp}`, "info");
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-    for (const step of steps) {
-      await new Promise((resolve) => setTimeout(resolve, step.delay - (steps[steps.indexOf(step) - 1]?.delay || 0)));
-      addLog(step.text, step.type as LogEntry["type"]);
+      // Verificar se servidor está online
+      addLog("> Verificando servidor...", "info");
+      
+      const serverUrl = `http://${pcIp}:8888`;
+      
+      try {
+        const statusResponse = await fetch(`${serverUrl}/status`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+
+        if (!statusResponse.ok) {
+          throw new Error('Servidor offline');
+        }
+
+        addLog("✅ Servidor detectado", "success");
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+      } catch (error) {
+        addLog("❌ Servidor não encontrado", "error");
+        addLog("> Verifique se o servidor está rodando no PC", "warning");
+        addLog("> Comando: npm run inject:stealth", "info");
+        setIsInjecting(false);
+        return;
+      }
+
+      // Enviar comando de injeção
+      addLog("> Verificando Notepad...", "info");
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      const injectResponse = await fetch(`${serverUrl}/inject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000)
+      });
+
+      const result = await injectResponse.json();
+
+      if (result.success) {
+        addLog("✅ Notepad detectado", "success");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        addLog("> Executando comando stealth...", "info");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        addLog("✅ Comando executado com sucesso!", "success");
+        addLog(`> Método: ${result.method || 'stealth'}`, "info");
+        addLog("> Injeção concluída sem logs", "success");
+        
+      } else if (result.requiresNotepad) {
+        addLog("❌ Notepad não está aberto", "error");
+        addLog("> Abra o Notepad no PC e tente novamente", "warning");
+        
+      } else {
+        addLog(`❌ Erro: ${result.error}`, "error");
+      }
+
+    } catch (error: any) {
+      addLog("❌ Erro de conexão", "error");
+      
+      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+        addLog("> Timeout: PC não respondeu", "error");
+      } else if (error.message?.includes('Failed to fetch')) {
+        addLog("> Não foi possível conectar ao PC", "error");
+      } else {
+        addLog(`> ${error.message || 'Erro desconhecido'}`, "error");
+      }
+      
+      addLog("> Verifique:", "info");
+      addLog("  • PC e celular na mesma rede WiFi", "info");
+      addLog("  • Servidor rodando no PC", "info");
+      addLog("  • IP do PC está correto", "info");
+      
+    } finally {
+      setIsInjecting(false);
     }
-
-    setIsInjecting(false);
   };
 
   const detectNetworkInfo = async () => {
@@ -88,7 +170,6 @@ export function Terminal() {
     if ('connection' in navigator) {
       const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
       if (conn) {
-        // type é o tipo real (wifi, cellular, ethernet), effectiveType é a velocidade (4g, 3g, etc)
         networkInfo.connectionType = conn.type || (isMobile ? 'cellular' : 'wifi');
         networkInfo.effectiveType = conn.effectiveType;
         networkInfo.downlink = conn.downlink;
@@ -96,12 +177,11 @@ export function Terminal() {
       }
     }
 
-    // Se não tem tipo de conexão, assumir baseado no dispositivo
     if (!networkInfo.connectionType || networkInfo.connectionType === 'unknown') {
       networkInfo.connectionType = isMobile ? 'cellular' : 'wifi';
     }
 
-    // DETECTAR ISP/PROVEDOR REAL via API de IP
+    // Detectar ISP/Provedor via API
     try {
       const ipResponse = await fetch('https://ip-api.com/json/?fields=status,isp,org,as,query,city,regionName');
       const ipData = await ipResponse.json();
@@ -110,11 +190,7 @@ export function Terminal() {
         networkInfo.publicIP = ipData.query;
         networkInfo.city = ipData.city;
         
-        // Extrair nome do ISP/Provedor
         let ispName = ipData.isp || ipData.org || '';
-        
-        // Limpar e formatar o nome do ISP
-        // Remover termos técnicos comuns
         ispName = ispName
           .replace(/S\.?A\.?/gi, '')
           .replace(/LTDA/gi, '')
@@ -127,7 +203,6 @@ export function Terminal() {
           .replace(/\s+/g, ' ')
           .trim();
         
-        // Identificar provedores conhecidos
         const knownISPs: { [key: string]: string } = {
           'claro': 'Claro',
           'net': 'NET',
@@ -138,14 +213,6 @@ export function Terminal() {
           'live': 'Live TIM',
           'algar': 'Algar',
           'brisanet': 'Brisanet',
-          'desktop': 'Desktop',
-          'copel': 'Copel',
-          'sercomtel': 'Sercomtel',
-          'unifique': 'Unifique',
-          'americanet': 'Americanet',
-          'vero': 'Vero',
-          'sumicity': 'Sumicity',
-          'mob': 'Mob Telecom',
         };
         
         const lowerIsp = ispName.toLowerCase();
@@ -156,52 +223,30 @@ export function Terminal() {
           }
         }
         
-        // Se não encontrou provedor conhecido, usar o nome detectado
         if (!networkInfo.isp && ispName.length > 2) {
-          // Capitalizar primeira letra de cada palavra
           networkInfo.isp = ispName.split(' ')
             .filter(w => w.length > 1)
             .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
             .join(' ')
-            .substring(0, 30); // Limitar tamanho
+            .substring(0, 30);
         }
       }
     } catch (e) {
       console.log('Erro ao detectar ISP:', e);
     }
 
-    // Se não conseguiu detectar ISP, tentar API alternativa
-    if (!networkInfo.isp) {
-      try {
-        const altResponse = await fetch('https://ipinfo.io/json');
-        const altData = await altResponse.json();
-        if (altData.org) {
-          let orgName = altData.org.replace(/^AS\d+\s*/, '').trim();
-          networkInfo.isp = orgName.substring(0, 30);
-          networkInfo.publicIP = altData.ip;
-          networkInfo.city = altData.city;
-        }
-      } catch {
-        // Fallback silencioso
-      }
-    }
-
-    // Gerar nome da rede baseado no ISP detectado
     if (networkInfo.isp) {
       if (isMobile && networkInfo.connectionType === 'cellular') {
         const speed = networkInfo.effectiveType?.toUpperCase() || '4G';
         networkInfo.networkName = `${networkInfo.isp} ${speed}`;
       } else {
-        // WiFi ou cabo - usar nome do ISP + Fibra/WiFi
         const suffix = networkInfo.downlink && networkInfo.downlink > 50 ? ' Fibra' : '';
         networkInfo.networkName = `${networkInfo.isp}${suffix}`;
       }
     } else {
-      // Fallback se não detectou ISP
       networkInfo.networkName = isMobile ? 'Dados Móveis' : 'WiFi Conectado';
     }
     
-    // Calcular sinal baseado na latência e velocidade
     const rtt = networkInfo.rtt || 50;
     const speed = networkInfo.downlink || 10;
     
@@ -245,10 +290,8 @@ export function Terminal() {
     setLogs([]);
     addLog("> Detectando rede conectada...", "info");
     
-    // Detectar informações via API de IP (funciona em qualquer lugar)
     const networkInfo = await detectNetworkInfo();
     
-    // Tentar servidor primeiro (para quando rodar localmente no Windows)
     let serverDetected = false;
     try {
       const result = await wifiQuery.refetch();
@@ -263,7 +306,6 @@ export function Terminal() {
         serverDetected = true;
         addLog(`> Rede WiFi: ${wifiInfo.ssid}`, "success");
         
-        // Mostrar provedor se detectou
         if (networkInfo.isp) {
           addLog(`> Provedor: ${networkInfo.isp}`, "info");
         }
@@ -276,23 +318,19 @@ export function Terminal() {
         }
       }
     } catch {
-      // Servidor não disponível - usar detecção do navegador
+      // Servidor não disponível
     }
 
-    // Se não detectou pelo servidor, usar API de IP
     if (!serverDetected) {
-      // Mostrar provedor/rede detectada
       if (networkInfo.isp) {
         addLog(`> Provedor: ${networkInfo.isp}`, "success");
       }
       
-      // Mostrar nome da rede
       if (networkInfo.networkName && networkInfo.networkName !== networkInfo.isp) {
         addLog(`> Rede: ${networkInfo.networkName}`, "success");
       }
     }
     
-    // Mostrar tipo de conexão
     const connType = networkInfo.connectionType;
     const typeMap: Record<string, string> = {
       'wifi': 'WiFi',
@@ -305,7 +343,6 @@ export function Terminal() {
     const displayType = typeMap[connType || ''] || (networkInfo.isMobile ? 'Dados Móveis' : 'WiFi');
     addLog(`> Tipo: ${displayType}`, "info");
     
-    // Mostrar velocidade da conexão
     if (networkInfo.effectiveType) {
       const speedMap: Record<string, string> = {
         'slow-2g': '2G (Lento)',
@@ -316,22 +353,18 @@ export function Terminal() {
       addLog(`> Velocidade: ${speedMap[networkInfo.effectiveType] || networkInfo.effectiveType.toUpperCase()}`, "info");
     }
     
-    // Mostrar sinal
     if (networkInfo.signal) {
       addLog(`> Sinal: ${networkInfo.signal}`, "info");
     }
     
-    // Mostrar download se disponível
     if (networkInfo.downlink && networkInfo.downlink > 0) {
       addLog(`> Download: ${networkInfo.downlink.toFixed(1)} Mbps`, "info");
     }
     
-    // Mostrar cidade se detectou
     if (networkInfo.city) {
       addLog(`> Localização: ${networkInfo.city}`, "info");
     }
     
-    // Mostrar IP local se conseguiu
     if (networkInfo.localIP) {
       addLog(`> IP Local: ${networkInfo.localIP}`, "info");
     }
@@ -339,7 +372,6 @@ export function Terminal() {
 
   return (
     <div className="w-full max-w-md mx-auto bg-card border border-border/50 rounded-lg shadow-2xl overflow-hidden backdrop-blur-sm bg-opacity-90 relative group">
-      {/* Glow Effect on Hover */}
       <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-blue-600 rounded-lg blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 animate-tilt -z-10"></div>
       
       {/* Terminal Header */}
@@ -353,7 +385,12 @@ export function Terminal() {
           <TerminalIcon className="w-3 h-3" />
           bypass@Wraith:~
         </div>
-        <div className="w-8"></div> {/* Spacer for centering */}
+        <button 
+          onClick={() => setShowConfig(!showConfig)}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Settings className="w-3 h-3" />
+        </button>
       </div>
 
       {/* Terminal Body */}
@@ -363,9 +400,28 @@ export function Terminal() {
             Wraith Bypass
           </h2>
           <p className="text-xs text-muted-foreground font-mono text-center">
-            v1.0.1
+            v2.0.0 - Stealth Mode
           </p>
         </div>
+
+        {/* Configuração de IP */}
+        {showConfig && (
+          <div className="space-y-2 p-3 bg-muted/30 rounded-md border border-border/30">
+            <label className="text-xs text-muted-foreground font-mono">
+              IP do PC (mesma rede WiFi):
+            </label>
+            <Input 
+              type="text"
+              value={pcIp}
+              onChange={(e) => savePcIp(e.target.value)}
+              placeholder="192.168.1.100"
+              className="font-mono text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground/70">
+              Configure o IP local do PC na sua rede WiFi
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3">
           <Button 
