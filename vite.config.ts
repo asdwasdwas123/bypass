@@ -3,10 +3,19 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
-import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
+// Only include manus runtime plugin in development
+const isDev = process.env.NODE_ENV === "development";
+let plugins: any[] = [react(), tailwindcss()];
 
-const plugins = [react(), tailwindcss(), vitePluginManusRuntime()];
+if (isDev) {
+  try {
+    const { vitePluginManusRuntime } = require("vite-plugin-manus-runtime");
+    plugins.push(vitePluginManusRuntime());
+  } catch (e) {
+    // Plugin not available, skip it
+  }
+}
 
 export default defineConfig({
   plugins,
